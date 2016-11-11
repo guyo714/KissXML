@@ -1,3 +1,5 @@
+This is a forked version of KissXML for use in the ACE Mobile app.
+
 # [KissXML](https://github.com/robbiehanson/KissXML)
 
 [![CI Status](http://img.shields.io/travis/robbiehanson/KissXML.svg?style=flat)](https://travis-ci.org/robbiehanson/KissXML)
