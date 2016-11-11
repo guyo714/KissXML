@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name         = 'KissXMLACE'
+  s.name         = 'KissXML'
   s.version      = '5.1.4'
   s.license      = { :type => 'MIT', :file => 'LICENSE.txt' }
   s.summary      = 'A replacement for Cocoa\'s NSXML cluster of classes. Based on libxml.'
