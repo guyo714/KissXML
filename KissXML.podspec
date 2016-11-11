@@ -5,7 +5,7 @@ Pod::Spec.new do |s|
   s.summary      = 'A replacement for Cocoa\'s NSXML cluster of classes. Based on libxml.'
   s.homepage     = 'https://github.com/robbiehanson/KissXML'
   s.author       = { 'Robbie Hanson' => 'robbiehanson@deusty.com' }
-  s.source       = { :git => 'https://github.com/robbiehanson/KissXML.git', :tag => s.version }
+  s.source       = { :git => 'git@github.com:guyo714/KissXML.git', :tag => s.version }
 
   s.requires_arc = true
   s.default_subspecs = 'Core'
