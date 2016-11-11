@@ -1,6 +1,8 @@
 #import "DDXMLPrivate.h"
 #import "NSString+DDXML.h"
 
+#define NSXMLPRINTDEBUG 0
+
 #if ! __has_feature(objc_arc)
 #warning This file must be compiled with ARC. Use -fobjc-arc flag (or convert project to ARC).
 #endif
@@ -29,18 +31,18 @@
  * Returns a DDXML wrapper object for the given primitive node.
  * The given node MUST be non-NULL and of the proper type.
 **/
-+ (instancetype)nodeWithElementPrimitive:(xmlNodePtr)node owner:(DDXMLNode *)owner
++ (id)nodeWithElementPrimitive:(xmlNodePtr)node owner:(DDXMLNode *)owner
 {
 	return [[DDXMLElement alloc] initWithElementPrimitive:node owner:owner];
 }
 
-- (instancetype)initWithElementPrimitive:(xmlNodePtr)node owner:(DDXMLNode *)inOwner
+- (id)initWithElementPrimitive:(xmlNodePtr)node owner:(DDXMLNode *)inOwner
 {
 	self = [super initWithPrimitive:(xmlKindPtr)node owner:inOwner];
 	return self;
 }
 
-+ (instancetype)nodeWithPrimitive:(xmlKindPtr)kindPtr owner:(DDXMLNode *)owner
++ (id)nodeWithPrimitive:(xmlKindPtr)kindPtr owner:(DDXMLNode *)owner
 {
 	// Promote initializers which use proper parameter types to enable compiler to catch more mistakes
 	NSAssert(NO, @"Use nodeWithElementPrimitive:owner:");
@@ -48,7 +50,7 @@
 	return nil;
 }
 
-- (instancetype)initWithPrimitive:(xmlKindPtr)kindPtr owner:(DDXMLNode *)inOwner
+- (id)initWithPrimitive:(xmlKindPtr)kindPtr owner:(DDXMLNode *)inOwner
 {
 	// Promote initializers which use proper parameter types to enable compiler to catch more mistakes.
 	NSAssert(NO, @"Use initWithElementPrimitive:owner:");
@@ -56,7 +58,7 @@
 	return nil;
 }
 
-- (instancetype)initWithName:(NSString *)name
+- (id)initWithName:(NSString *)name
 {
 	// Note: Make every guarantee that genericPtr is not null
 	
@@ -69,7 +71,7 @@
 	return [self initWithElementPrimitive:node owner:nil];
 }
 
-- (instancetype)initWithName:(NSString *)name URI:(NSString *)URI
+- (id)initWithName:(NSString *)name URI:(NSString *)URI
 {
 	// Note: Make every guarantee that genericPtr is not null
 	
@@ -85,7 +87,7 @@
 	return result;
 }
 
-- (instancetype)initWithName:(NSString *)name stringValue:(NSString *)string
+- (id)initWithName:(NSString *)name stringValue:(NSString *)string
 {
 	// Note: Make every guarantee that genericPtr is not null
 	
@@ -101,7 +103,7 @@
 	return result;
 }
 
-- (instancetype)initWithXMLString:(NSString *)string error:(NSError **)error
+- (id)initWithXMLString:(NSString *)string error:(NSError **)error
 {
 	DDXMLDocument *doc = [[DDXMLDocument alloc] initWithXMLString:string options:0 error:error];
 	if (doc == nil)
@@ -113,6 +115,115 @@
 	[result detach];
 	
 	return result;
+}
+
+- (NSDictionary*)_dictionaryForAttributes:(xmlAttrPtr)curAttr
+{
+    NSMutableDictionary* propertiesDictionary   = [[NSMutableDictionary alloc] init];
+
+    while (curAttr)
+    {
+        NSAssert(curAttr->children->content != 0, @"Attribute has no  value !");
+        
+        NSString* contentString = [NSString stringWithCString:(const char*)curAttr->children->content encoding:NSUTF8StringEncoding];
+        [propertiesDictionary setObject:contentString 
+                                 forKey:[NSString stringWithCString:(const char*)curAttr->name 
+                                                           encoding:NSUTF8StringEncoding]];
+        
+        curAttr = curAttr->next;
+    }
+
+    return propertiesDictionary;
+}
+
+- (NSDictionary*)_dictionaryForNode:(xmlNodePtr)curNode
+{
+    // Setup the root node as a dictionary
+    NSMutableDictionary* dictionary = [[NSMutableDictionary alloc] init];
+    
+    // Build dictionary of arrays for all the elements
+    while (curNode)
+    {
+        // Array to store all the elements
+        NSMutableArray* array = [dictionary objectForKey:[NSString stringWithCString:(const char*)curNode->name encoding:NSUTF8StringEncoding]];
+        if (array == nil)
+        {
+            array = [[NSMutableArray alloc] init];
+            [dictionary setObject:array forKey:[NSString stringWithCString:(const char*)curNode->name encoding:NSUTF8StringEncoding]];
+        }
+#if NSXMLPRINTDEBUG == 1
+        NSLog(@"Adding %@", [NSString stringWithCString:(const char*)curNode->name encoding:NSUTF8StringEncoding]);
+#endif
+        
+        // Add object to the array string or object
+        if (curNode->children)
+        {
+            if (curNode->children->type == XML_ELEMENT_NODE)
+            {
+                //NSLog(@"Adding dictionary: %@", [NSString stringWithCString:(const char*)curNode->name encoding:NSUTF8StringEncoding]);
+                NSDictionary* childDictionary               = [self _dictionaryForNode:curNode->children];
+                NSDictionary* propertiesDictionary;//   = [[NSMutableDictionary alloc] init];
+                
+                // Add the attributes
+                if (curNode->properties)
+                    propertiesDictionary = [self _dictionaryForAttributes:curNode->properties];
+                
+                // Add a properties for element
+                if (propertiesDictionary && [propertiesDictionary count])
+                    [childDictionary setValue:propertiesDictionary forKey:@"Properties"];
+                
+                [array addObject:childDictionary];
+            }
+            else if (curNode->children->type == XML_TEXT_NODE)
+            {
+                NSString* contentString = [NSString stringWithCString:(const char*)curNode->children->content
+                                                             encoding:NSUTF8StringEncoding];
+                
+//                NSLog(@"Adding element: %@ with content: %@", 
+//                  [NSString stringWithCString:(const char*)curNode->name encoding:NSUTF8StringEncoding],
+//                  contentString);
+                
+                [array addObject:contentString];
+            }
+        }
+        else if (curNode->properties)
+        {
+            // Only properties field
+            NSDictionary* attributesDictionary  = [self _dictionaryForAttributes:curNode->properties];
+            [array addObject:[NSDictionary dictionaryWithObject:attributesDictionary forKey:@"Properties"]];
+        }
+
+        curNode = curNode->next;
+    }
+    
+    // Flatten single element array items into a the flat dictionary
+    NSMutableDictionary* flatDictionary = [[NSMutableDictionary alloc] init];
+    for (NSString* keyString in dictionary)
+    {
+        NSArray* contentArray = [dictionary objectForKey:keyString];
+        if ([contentArray count] == 1)
+        {
+            id contentObject = [contentArray objectAtIndex:0];
+            [flatDictionary setObject:contentObject forKey:keyString];
+        }
+        else if ([contentArray count] > 1)
+        {
+            [flatDictionary setObject:contentArray forKey:keyString];
+        }
+    }
+    
+#if NSXMLPRINTDEBUG == 1
+    NSLog(@"DICTIONARY : %@", [flatDictionary description]);
+#endif
+    return flatDictionary;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#pragma mark Elements
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSDictionary*)elements
+{
+    return [self _dictionaryForNode:(xmlNodePtr)genericPtr];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
